@@ -15,8 +15,12 @@ BACKUP_CHANNEL_ID =  -1002184815414
 ALLOWED_FILES = ['document', 'photo', 'video', 'audio', 'voice']
 
 class cbd:
-    EVENTS = "events"
     WHITELIST = "whitelist"
+    WHITELIST_VIEW = "whitelist_view"
+    WHITELIST_ADD = "whitelist_add"
+    REVOKE = "revoke_"
+
+    EVENTS = "events"
     VIEW = "view"
     CREATE = "create"
     DELETE_EVENT = "delete_event_"
@@ -38,6 +42,7 @@ events_coll = db.collection("events")
 
 # Listners
 isListening = {
+    "whitelist": [],
     "name": [],
     "date": {},
     "files": {}
@@ -52,12 +57,59 @@ def exists(uid):
     return True
 
 def isAdmin(uid):
-    return users_coll.document(uid).get().to_dict()["isAdmin"]
+    return "isAdmin" in users_coll.document(uid).get().to_dict().keys()
+
+def fetchName(chat_id):
+    try:
+        chat = bot.get_chat(chat_id)
+        first_name = chat.first_name
+        last_name = chat.last_name
+        user_name = f"{first_name} {last_name}" if last_name else first_name
+        return user_name
+    except Exception as e:
+        print(f"Error fetching user name: {e}")
+        return None
 
 # Custom Handlers
 #(Whitelist)
 def handle_whitelist(callback):
-    pass
+    uid = str(callback.message.chat.id)
+
+    markup = types.InlineKeyboardMarkup(row_width=2)
+
+    view = types.InlineKeyboardButton("View existing", callback_data=cbd.WHITELIST_VIEW)
+    markup.add(view)
+
+    add = types.InlineKeyboardButton("Add a new member", callback_data=cbd.WHITELIST_ADD)
+    markup.add(add)
+
+    bot.send_message(int(uid), f"Welcome to the whitelist.\nStart by choosing an option.", reply_markup=markup)
+
+def handle_whitelist_view(callback):
+    uid = str(callback.message.chat.id)
+
+    for user in users_coll.get():
+        markup = types.InlineKeyboardMarkup(row_width=1)
+
+        revoke = types.InlineKeyboardButton("Revoke access", callback_data=cbd.REVOKE+user.id)
+        markup.add(revoke)
+
+        user_uid = user.id
+        user = user.to_dict()
+
+        bot.send_message(int(uid), f"{'🪪\n' if 'isAdmin' in user.keys() else ''}👤{fetchName(user_uid)} ({user_uid})\n 👥{fetchName(user['by'])} ({user['by']})", reply_markup=markup)
+
+def handle_whitelist_revoke(callback, user_uid):
+    users_coll.document(user_uid).set({})
+
+def handle_whitelist_add(callback):
+    global isListening
+
+    uid = str(callback.message.chat.id)
+
+    isListening["whitelist"].append(uid)
+
+    bot.send_message(int(uid), "Please enter the user's uid.")
 
 #(Events)
 def handle_events(callback):
@@ -77,6 +129,9 @@ def handle_events_view(callback):
     events = events_coll.order_by("date").get()
 
     for event in events:
+        if "deleted" in event.to_dict().keys():
+            continue
+
         document = event.id
         event = event.to_dict()
 
@@ -135,6 +190,10 @@ def handle_event_view(callback, document, page):
 
     files = event["files"]
 
+    for file in files:
+        if "deleted" in file.keys():
+            files.remove(file)
+
     start_index = (page - 1) * 10
     end_index = start_index + 10
 
@@ -143,16 +202,16 @@ def handle_event_view(callback, document, page):
     for file in page_files:
         mid = file["mid"]
 
-        bot.forward_message(uid, TARGET_CHANNEL_ID, mid).message_id
+        message = bot.forward_message(uid, TARGET_CHANNEL_ID, mid)
 
         markup = types.InlineKeyboardMarkup(row_width=2)
 
-        delete = types.InlineKeyboardButton("Delete", callback_data=cbd.DELETE_FILE+files.index(file))
+        delete = types.InlineKeyboardButton("Delete", callback_data=cbd.DELETE_FILE+f"{mid}_"+document)
         markup.add(delete)
 
-        bot.send_message(uid, file["by"], reply_markup=markup)
+        bot.reply_to(message, f"By {fetchName(file['by'])} on {file["date"].strftime('%Y-%m-%d %H:%M:%S')}", reply_markup=markup)
 
-    if end_index == len(files):
+    if end_index == len(files) or len(files) == 0:
         bot.send_message(uid, "There's nothing else to see. :(") 
 
     else:
@@ -163,6 +222,28 @@ def handle_event_view(callback, document, page):
 
         bot.send_message(uid, f"Page {page} out of {round(len(files)/10)}", reply_markup=markup)
 
+def handle_delete_file(callback, document, mid):
+    uid = str(callback.message.chat.id)
+
+    event = events_coll.document(document).get().to_dict()
+
+    if event:
+        files = event["files"]
+
+        for index, file in enumerate(files):
+            if file["mid"] == mid:
+                files[index]["deleted"] = True
+                files[index]["deletedBy"] = uid 
+                break
+
+        events_coll.document(document).update({"files": files})
+
+        bot.delete_message(int(uid), callback.message.id-1)
+        bot.delete_message(int(uid), callback.message.id)
+
+        bot.send_message(uid, "Deletion success")
+
+        return
 # Handlers
 @bot.message_handler(commands=["start"])
 def start(message):
@@ -197,6 +278,15 @@ def answer(callback):
         if cb == cbd.WHITELIST and isAdmin(uid):
             handle_whitelist(callback)
 
+        if cb == cbd.WHITELIST_ADD and isAdmin(uid):
+            handle_whitelist_add(callback)
+            
+        if cb == cbd.WHITELIST_VIEW and isAdmin(uid):
+            handle_whitelist_view(callback)
+
+        if cb.startswith(cbd.REVOKE) and isAdmin(uid):
+            handle_whitelist_revoke(callback, cb.split("_")[-1])
+
         # Events CRD
 
         elif cb == cbd.EVENTS:
@@ -216,6 +306,9 @@ def answer(callback):
 
         elif cb.startswith(cbd.EVENT):
             handle_event_view(callback, cb.split("_")[-1], int(cb.split("_")[-2]))
+
+        elif cb.startswith(cbd.DELETE_FILE):
+            handle_delete_file(callback, cb.split("_")[-1], int(cb.split("_")[-2]))
 
 @bot.message_handler(func=lambda message: True)
 def event_create(message):
@@ -243,6 +336,15 @@ def event_create(message):
 
         bot.send_message(int(uid), "Done. I have created a new event for you.")
 
+    elif uid in isListening["whitelist"]:
+        isListening["whitelist"].remove(uid)
+
+        users_coll.document(message.text).set({
+            "by": uid
+        })
+
+        bot.reply_to(message, f"{fetchName(message.text)} ({message.text}) whitelisted.")
+
 @bot.message_handler(content_types=ALLOWED_FILES)
 def upload_files(message):
     uid = str(message.chat.id)
@@ -253,14 +355,13 @@ def upload_files(message):
     
     if message.content_type in ALLOWED_FILES:
         mid = bot.forward_message(TARGET_CHANNEL_ID, uid, message.message_id).message_id
-        events_coll.document(isListening["files"][uid]).update({"files": firestore.ArrayUnion([{"mid": mid, "by": uid}])})
+        events_coll.document(isListening["files"][uid]).update({"files": firestore.ArrayUnion([{"mid": mid, "by": uid, "date": datetime.now()}])})
 
     elif message.content_type == 'media_group':
         for media in message.photo:
             mid = bot.forward_message(TARGET_CHANNEL_ID, message.chat.id, message.message_id).message_id
-            print(mid)
 
-            db.document(isListening["files"]).update({"files": [{"mid": mid, "by": uid}]})
+            db.document(isListening["files"]).update({"files": [{"mid": mid, "by": uid, "date": datetime.now()}]})
 
     bot.reply_to(message, "File saved successfully!")
 
