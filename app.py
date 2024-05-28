@@ -243,7 +243,7 @@ def handle_event_view(callback, document, page):
         delete = types.InlineKeyboardButton("Delete", callback_data=cbd.DELETE_FILE+f"{mid}_"+document)
         markup.add(delete)
 
-        bot.reply_to(message, f"By {fetchName(file['by'])} on {file["date"].strftime('%Y-%m-%d %H:%M:%S')}", reply_markup=markup)
+        bot.reply_to(message, f"By {fetchName(file['by'])} on {file['date'].strftime('%Y-%m-%d %H:%M:%S')}", reply_markup=markup)
 
     if end_index == len(files) or len(files) < 10:
         bot.send_message(uid, "There's nothing else to see. :(") 
