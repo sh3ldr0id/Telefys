@@ -12,13 +12,14 @@ TOKEN = "6606433414:AAFvjx9FmND5f7EZHzaajkoO6SKkit9MhI0"
 TARGET_CHANNEL_ID = -1002168833752
 BACKUP_CHANNEL_ID =  -1002184815414
 
-ALLOWED_FILES = ['document', 'photo', 'video', 'audio', 'voice']
+ALLOWED_FILES = ['document', 'photo', 'video', 'audio', 'voice', 'media_group']
 
 class cbd:
     WHITELIST = "whitelist"
     WHITELIST_VIEW = "whitelist_view"
     WHITELIST_ADD = "whitelist_add"
     REVOKE = "revoke_"
+    ADMIN = "admin_"
 
     EVENTS = "events"
     VIEW = "view"
@@ -50,14 +51,19 @@ isListening = {
 
 # Helper Funcs
 def exists(uid):
-    if not exists:
+    user = users_coll.document(uid).get()
+
+    if not user.exists or not user.to_dict()["verified"]:
         bot.send_message(int(uid), f"Dear User, \nPlease ask an admin to verify your id ({uid})")
+        
         return False
     
     return True
 
 def isAdmin(uid):
-    return "isAdmin" in users_coll.document(uid).get().to_dict().keys()
+    user = users_coll.document(uid).get()
+
+    return user.exists and user.to_dict()["isAdmin"]
 
 def fetchName(chat_id):
     try:
@@ -89,18 +95,35 @@ def handle_whitelist_view(callback):
     uid = str(callback.message.chat.id)
 
     for user in users_coll.get():
-        markup = types.InlineKeyboardMarkup(row_width=1)
-
-        revoke = types.InlineKeyboardButton("Revoke access", callback_data=cbd.REVOKE+user.id)
-        markup.add(revoke)
-
         user_uid = user.id
         user = user.to_dict()
 
-        bot.send_message(int(uid), f"{'🪪\n' if 'isAdmin' in user.keys() else ''}👤{fetchName(user_uid)} ({user_uid})\n 👥{fetchName(user['by'])} ({user['by']})", reply_markup=markup)
+        markup = types.InlineKeyboardMarkup(row_width=2)
+
+        revoke = types.InlineKeyboardButton(
+            "Enable" if not user["verified"] else "Disable", 
+            callback_data=cbd.REVOKE+user_uid
+        )
+        markup.add(revoke)
+
+        admin = types.InlineKeyboardButton(
+            "Promote" if not user["isAdmin"] else "Demote",
+            callback_data=cbd.ADMIN+user_uid
+        )
+        markup.add(admin)
+
+        bot.send_message(int(uid), f"{'🪪' if isAdmin(user_uid) else '👤'} {fetchName(user_uid)} ({user_uid})\n👥 {fetchName(user['by'])} ({user['by']})", reply_markup=markup)
 
 def handle_whitelist_revoke(callback, user_uid):
-    users_coll.document(user_uid).set({})
+    user_doc = users_coll.document(user_uid)
+
+    user = user_doc.get()
+
+    if user.exists:
+        verified = not user.to_dict()['verified']
+        user_doc.update({"verified": verified})
+
+        bot.send_message(callback.message.chat.id, f"{fetchName(user.id)} ({user.id}) has access." if verified else f"{fetchName(user.id)} ({user.id}) no longer has access.")
 
 def handle_whitelist_add(callback):
     global isListening
@@ -110,6 +133,17 @@ def handle_whitelist_add(callback):
     isListening["whitelist"].append(uid)
 
     bot.send_message(int(uid), "Please enter the user's uid.")
+
+def handle_admin(callback, user_uid):
+    user_doc = users_coll.document(user_uid)
+
+    user = user_doc.get()
+
+    if user.exists:
+        isAdmin = not user.to_dict()['isAdmin']
+        user_doc.update({"isAdmin": isAdmin})
+
+        bot.send_message(callback.message.chat.id, f"{fetchName(user.id)} ({user.id}) now has admin access." if isAdmin else f"{fetchName(user.id)} ({user.id}) no longer has admin access.")
 
 #(Events)
 def handle_events(callback):
@@ -211,7 +245,7 @@ def handle_event_view(callback, document, page):
 
         bot.reply_to(message, f"By {fetchName(file['by'])} on {file["date"].strftime('%Y-%m-%d %H:%M:%S')}", reply_markup=markup)
 
-    if end_index == len(files) or len(files) == 0:
+    if end_index == len(files) or len(files) < 10:
         bot.send_message(uid, "There's nothing else to see. :(") 
 
     else:
@@ -263,6 +297,24 @@ def start(message):
 
     bot.send_message(message.chat.id, "Heyyy! \n\nWelcome to Telegram File System (Telefys) \nby sh3ldr0id. \n\nHow can I help you?", reply_markup=markup)
 
+@bot.message_handler(commands=["cancel"])
+def cancel(message):
+    uid = str(message.chat.id)
+
+    if uid in isListening["whitelist"]:
+        isListening["whitelist"].remove(uid)
+
+    if uid in isListening["name"]:
+        isListening["name"].remove(uid)
+
+    if uid in isListening["date"]:
+        isListening["date"].pop(uid)
+        
+    if uid in isListening["files"]:
+        isListening["files"].pop(uid)
+
+    bot.reply_to(message, "Cancelled all activities.")
+
 @bot.callback_query_handler(func=lambda call : True)
 def answer(callback):
     uid = str(callback.message.chat.id)
@@ -273,23 +325,25 @@ def answer(callback):
     if callback.message:
         cb = callback.data
 
-        # Whitelist CRD
+        if isAdmin(uid):
+            # Whitelist CRD
+            if cb == cbd.WHITELIST:
+                handle_whitelist(callback)
 
-        if cb == cbd.WHITELIST and isAdmin(uid):
-            handle_whitelist(callback)
+            elif cb == cbd.WHITELIST_ADD:
+                handle_whitelist_add(callback)
+                
+            elif cb == cbd.WHITELIST_VIEW:
+                handle_whitelist_view(callback)
 
-        if cb == cbd.WHITELIST_ADD and isAdmin(uid):
-            handle_whitelist_add(callback)
-            
-        if cb == cbd.WHITELIST_VIEW and isAdmin(uid):
-            handle_whitelist_view(callback)
+            elif cb.startswith(cbd.REVOKE):
+                handle_whitelist_revoke(callback, cb.split("_")[-1])
 
-        if cb.startswith(cbd.REVOKE) and isAdmin(uid):
-            handle_whitelist_revoke(callback, cb.split("_")[-1])
+            elif cb.startswith(cbd.ADMIN):
+                handle_admin(callback, cb.split("_")[-1])
 
         # Events CRD
-
-        elif cb == cbd.EVENTS:
+        if cb == cbd.EVENTS:
             handle_events(callback)
 
         elif cb == cbd.CREATE:
@@ -311,7 +365,7 @@ def answer(callback):
             handle_delete_file(callback, cb.split("_")[-1], int(cb.split("_")[-2]))
 
 @bot.message_handler(func=lambda message: True)
-def event_create(message):
+def message(message):
     global isListening
 
     uid = str(message.chat.id)
@@ -328,7 +382,12 @@ def event_create(message):
         bot.send_message(int(uid), "Now, please enter the date of the event. (DDMMYYYY)")
 
     elif uid in isListening["date"].keys():
-        isListening["date"][uid]["date"] = datetime.strptime(message.text, '%d%m%Y')
+        try:
+            isListening["date"][uid]["date"] = datetime.strptime(message.text, '%d%m%Y')
+
+        except ValueError:
+            bot.reply_to(message, "Invalid format. Please Try again. (Eg: 09112001)")
+            return
 
         events_coll.add(isListening["date"][uid])
 
@@ -339,8 +398,16 @@ def event_create(message):
     elif uid in isListening["whitelist"]:
         isListening["whitelist"].remove(uid)
 
-        users_coll.document(message.text).set({
-            "by": uid
+        user_doc = users_coll.document(message.text)
+
+        user = user_doc.get()
+
+        if user.exists and user.to_dict()["isAdmin"]:
+            bot.send_message(message.chat.id, f"Resetting admin privileges for {fetchName(message.text)} ({message.text})")
+
+        user_doc.set({
+            "by": uid,
+            "isAdmin": False
         })
 
         bot.reply_to(message, f"{fetchName(message.text)} ({message.text}) whitelisted.")
@@ -355,13 +422,16 @@ def upload_files(message):
     
     if message.content_type in ALLOWED_FILES:
         mid = bot.forward_message(TARGET_CHANNEL_ID, uid, message.message_id).message_id
-        events_coll.document(isListening["files"][uid]).update({"files": firestore.ArrayUnion([{"mid": mid, "by": uid, "date": datetime.now()}])})
+        bmid = bot.forward_message(BACKUP_CHANNEL_ID, message.chat.id, message.message_id).message_id
+
+        events_coll.document(isListening["files"][uid]).update({"files": firestore.ArrayUnion([{"mid": mid, "bmid": bmid, "by": uid, "date": datetime.now()}])})
 
     elif message.content_type == 'media_group':
         for media in message.photo:
             mid = bot.forward_message(TARGET_CHANNEL_ID, message.chat.id, message.message_id).message_id
+            bmid = bot.forward_message(BACKUP_CHANNEL_ID, message.chat.id, message.message_id).message_id
 
-            db.document(isListening["files"]).update({"files": [{"mid": mid, "by": uid, "date": datetime.now()}]})
+            events_coll.document(isListening["files"][uid]).update({"files": firestore.ArrayUnion([{"mid": mid, "bmid": bmid, "by": uid, "date": datetime.now()}])})
 
     bot.reply_to(message, "File saved successfully!")
 
