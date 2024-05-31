@@ -1,0 +1,1 @@
+OPEN_FOLDER = "CURRENT_"
