@@ -19,6 +19,6 @@ initFirebase()
 
 bot = telebot.TeleBot(TOKEN)
 
-from app.handlers.commands import create_folder, start, delete
+from app.handlers.commands import create_folder, start
 from app.handlers.messages import files, create_folder
-from app.handlers.callbacks import open_folder
+from app.handlers.callbacks import create_folder, delete

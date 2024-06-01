@@ -41,7 +41,8 @@ def upload_files(message):
             "name": file_name,
             "date": datetime.now(),
             "main": main_message_id,
-            "backup": backup_message_id
+            "backups": backup_message_ids,
+            "shared": False
         })[1].id
 
         current_folder = user.get("current")

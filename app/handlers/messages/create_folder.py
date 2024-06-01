@@ -21,10 +21,12 @@ def create_file(message):
 
     if listening == "filename":
         folder_id = folders_collection.add({
+            "owner": str(message.chat.id),
             "name": message.text,
             "files": [],
             "folders": [],
-            "date": datetime.now()
+            "date": datetime.now(),
+            "shared": False
         })[1].id
 
         current_folder_id = user.get("current")
