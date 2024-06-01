@@ -1,11 +1,10 @@
 from app import bot, MAIN_CHANNEL, BACKUP_CHANNELS
 
-from telebot import types
-
 from firebase_admin import firestore
 
 from datetime import datetime
-from uuid import uuid4
+
+from threading import Timer
 
 db = firestore.client()
 
@@ -21,7 +20,11 @@ def upload_files(message):
 
     if user.exists:
         if message.content_type != "document":
-            bot.send_message(message.chat.id, "Please send these as documents to save.")
+            reply_message_id = bot.reply_to(message, "Please send it as documents to save.").message_id
+
+            Timer(10, bot.delete_messages, args=(message.chat.id, [message.message_id, reply_message_id])).start()
+
+            return
 
         file_name = message.document.file_name
                 
@@ -45,7 +48,9 @@ def upload_files(message):
 
         folders_collection.document(current_folder).update({"files": firestore.ArrayUnion([file_id])})
 
-        bot.reply_to(message, "File saved successfully!")
+        confirm_message_id = bot.reply_to(message, "File saved successfully!").message_id
+
+        Timer(5, bot.delete_messages, args=(message.chat.id, [message.message_id, confirm_message_id])).start()
 
     else:
         bot.reply_to(message, "Please type /start first!")

@@ -1,6 +1,7 @@
 from app import bot
 
 from firebase_admin import firestore
+from threading import Timer
 
 db = firestore.client()
 
@@ -10,6 +11,8 @@ users_collection = db.collection("users")
 def create_file(message):    
     user = users_collection.document(str(message.chat.id))
 
-    user.update({"listening": "filename"})
+    bot.delete_message(message.chat.id, message.message_id)
 
-    bot.reply_to(message, "Sure! I'l create a folder. What do you want to name it?")
+    question_id = bot.send_message(message.chat.id, "Sure! I'l create a folder. What do you want to name it?").message_id
+
+    user.update({"listening": "filename", "question": question_id})    
