@@ -4,6 +4,8 @@ from firebase_admin import firestore
 
 from datetime import datetime
 
+from threading import Timer
+
 db = firestore.client()
 
 users_collection = db.collection("users")
@@ -12,7 +14,8 @@ folders_collection = db.collection("folders")
 
 @bot.message_handler()
 def create_file(message):
-    user = users_collection.document(str(message.chat.id)).get()
+    user_doc = users_collection.document(str(message.chat.id))
+    user = user_doc.get()
 
     listening = user.get("listening")
 
@@ -29,4 +32,10 @@ def create_file(message):
 
         current_folder.update({"folders": firestore.ArrayUnion([folder_id])})
 
-        bot.reply_to(message, f"Done! Created '{message.text}' in '{current_folder.get().get('name')}'")
+        user_doc.update({"listening": None, "question": None})
+
+        question_id = user.get("question")
+
+        confirm_id = bot.reply_to(message, f"Done! Created '{message.text}' in '{current_folder.get().get('name')}'").message_id
+
+        Timer(10, bot.delete_messages, args=(message.chat.id, [question_id, message.message_id, confirm_id])).start()
