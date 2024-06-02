@@ -29,6 +29,8 @@ def back(message):
 
             Timer(10, bot.delete_messages, args=(message.chat.id, [message.message_id, end_message_id])).start()
 
+            return
+
         previous = current_folder.get("previous")
 
         user_doc.update({"current": previous})
