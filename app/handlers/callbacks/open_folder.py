@@ -1,5 +1,5 @@
 from app import bot, MAIN_CHANNEL
-from app.helpers.constants import OPEN_FOLDER
+from app.helpers.constants import OPEN_FOLDER, DELETE, FILE, FOLDER
 
 from telebot import types
 
@@ -13,45 +13,56 @@ users_collection = db.collection("users")
 files_collection = db.collection("files")
 folders_collection = db.collection("folders")
 
-@bot.callback_query_handler(func=lambda x: True)
-def answer(callback):
-    if callback.message and callback.data.startswith(OPEN_FOLDER):
-        messages_to_delete = []
+def open_folder(callback):
+    messages_to_delete = []
 
-        current_folder_id = callback.data.split("_")[-1]
-        current_folder = folders_collection.document(current_folder_id).get()
+    current_folder_id = callback.data.split("_")[-1]
+    current_folder = folders_collection.document(current_folder_id).get()
 
-        user = users_collection.document(str(callback.message.chat.id))
-        user.update({"current": current_folder_id})
+    user = users_collection.document(str(callback.message.chat.id))
+    user.update({"current": current_folder_id})
 
-        viewing_message_id = bot.send_message(callback.message.chat.id, f"Viewing '{current_folder.get('name')}'").message_id
-        messages_to_delete.append(viewing_message_id)
+    viewing_message_id = bot.send_message(callback.message.chat.id, f"Viewing '{current_folder.get('name')}'").message_id
+    messages_to_delete.append(viewing_message_id)
 
-        files = current_folder.get("files")
-        folders = current_folder.get("folders")
+    files = current_folder.get("files")
+    folders = current_folder.get("folders")
 
-        for fileId in files:
-            file = files_collection.document(fileId).get()
-            message_id = file.get("main")
+    for fileId in files:
+        file = files_collection.document(fileId).get()
 
-            forwarded_message_id = bot.forward_message(callback.message.chat.id, MAIN_CHANNEL, message_id).message_id
-            messages_to_delete.append(forwarded_message_id)
+        message_id = file.get("main")
 
-        for folderId in folders:
-            folder = folders_collection.document(folderId).get()
+        file_name = file.get("name")
+        file_date = file.get("date")
 
-            folder_name = folder.get("name")
-            folder_date = folder.get("date")
+        forwarded_message = bot.forward_message(callback.message.chat.id, MAIN_CHANNEL, message_id)
+        messages_to_delete.append(forwarded_message.message_id)
 
-            markup = types.InlineKeyboardMarkup(row_width=2)
+        markup = types.InlineKeyboardMarkup(row_width=1)
 
-            open_folder = types.InlineKeyboardButton("Open", callback_data=OPEN_FOLDER+folderId)
-            markup.add(open_folder)
+        delete = types.InlineKeyboardButton("Delete", callback_data=DELETE+FILE+f"_{fileId}")
+        markup.add(delete)
 
-            folder_message_id = bot.send_message(callback.message.chat.id, f"📁 {folder_name} \n📅 {folder_date.strftime('%Y-%m-%d %H:%M:%S')}", reply_markup=markup).message_id
-            messages_to_delete.append(folder_message_id)
+        file_info_id = bot.reply_to(forwarded_message, f"📄 {file_name} \n📅 {file_date.strftime('%Y-%m-%d %H:%M:%S')}", reply_markup=markup).message_id
+        messages_to_delete.append(file_info_id)
 
-        end_message_id = bot.send_message(callback.message.chat.id, "That's it. :)").message_id
-        messages_to_delete.append(end_message_id)
+    for folderId in folders:
+        folder = folders_collection.document(folderId).get()
 
-        Timer(60*5, bot.delete_messages, args=(callback.message.chat.id, messages_to_delete)).start()
+        folder_name = folder.get("name")
+        folder_date = folder.get("date")
+
+        markup = types.InlineKeyboardMarkup(row_width=2)
+
+        open_folder = types.InlineKeyboardButton("Open", callback_data=OPEN_FOLDER+folderId)
+        delete = types.InlineKeyboardButton("Delete", callback_data=DELETE+FOLDER+f"_{folderId}")
+        markup.add(open_folder, delete)
+
+        folder_message_id = bot.send_message(callback.message.chat.id, f"🔑 {folderId} \n📁 {folder_name} \n📅 {folder_date.strftime('%Y-%m-%d %H:%M:%S')}", reply_markup=markup).message_id
+        messages_to_delete.append(folder_message_id)
+
+    end_message_id = bot.send_message(callback.message.chat.id, "That's it. :)").message_id
+    messages_to_delete.append(end_message_id)
+
+    Timer(60*2, bot.delete_messages, args=(callback.message.chat.id, messages_to_delete)).start()

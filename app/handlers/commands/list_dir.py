@@ -15,54 +15,35 @@ users_collection = db.collection("users")
 files_collection = db.collection("files")
 folders_collection = db.collection("folders")
 
-@bot.message_handler(commands=["start"])
-def start(message):    
-    messages_to_delete = []
-
-    messages_to_delete.append(message.message_id)
-
-    markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
-
-    create = types.InlineKeyboardButton("/create")
-    list_dir = types.InlineKeyboardButton("/list")
-    back = types.InlineKeyboardButton("/back")
-
-    markup.add(create, list_dir, back)
-
-    bot.send_message(
-        message.chat.id, 
-        f"Heyyy {fetchName(message.chat.id)}! \nWelcome to Telegram File System (Telefys) \nby sh3ldr0id.", 
-        reply_markup=markup
-    ).message_id
-
+@bot.message_handler(commands=["list"])
+def list_dir(message):    
     user = users_collection.document(str(message.chat.id)).get()
 
     if user.exists:
-        home_id = user.get("home")
+        messages_to_delete = []
 
-        users_collection.document(str(message.chat.id)).update({"current": home_id})
+        current_folder_id = user.get("current")
+        current_folder = folders_collection.document(current_folder_id).get()
 
-        viewing_message_id = bot.send_message(message.chat.id, f"Viewing 'Home'").message_id
+        viewing_message_id = bot.send_message(message.chat.id, f"Viewing '{current_folder.get('name')}'").message_id
         messages_to_delete.append(viewing_message_id)
 
-        home_folder = folders_collection.document(home_id).get()
-
-        files = home_folder.get("files")
-        folders = home_folder.get("folders")
+        files = current_folder.get("files")
+        folders = current_folder.get("folders")
 
         for fileId in files:
             file = files_collection.document(fileId).get()
 
+            message_id = file.get("main")
+
             file_name = file.get("name")
             file_date = file.get("date")
-
-            message_id = file.get("main")
 
             forwarded_message = bot.forward_message(message.chat.id, MAIN_CHANNEL, message_id)
             messages_to_delete.append(forwarded_message.message_id)
 
             markup = types.InlineKeyboardMarkup(row_width=1)
-    
+
             delete = types.InlineKeyboardButton("Delete", callback_data=DELETE+FILE+f"_{fileId}")
             markup.add(delete)
 
@@ -81,23 +62,13 @@ def start(message):
             delete = types.InlineKeyboardButton("Delete", callback_data=DELETE+FOLDER+f"_{folderId}")
             markup.add(open_folder, delete)
 
-            folder_info_id = bot.send_message(message.chat.id, f"📁 {folder_name} \n📅 {folder_date.strftime('%Y-%m-%d %H:%M:%S')}", reply_markup=markup).message_id
-            messages_to_delete.append(folder_info_id)
+            folder_message_id = bot.send_message(message.chat.id, f"📁 {folder_name} \n📅 {folder_date.strftime('%Y-%m-%d %H:%M:%S')}", reply_markup=markup).message_id
+            messages_to_delete.append(folder_message_id)
 
         end_message_id = bot.send_message(message.chat.id, "That's it. :)").message_id
-
         messages_to_delete.append(end_message_id)
 
+        Timer(60*2, bot.delete_messages, args=(message.chat.id, messages_to_delete)).start()
+
     else:
-        home_id = folders_collection.add({
-            "name": "Home",
-            "files": [],
-            "folders": [],
-            "date": datetime.now()
-        })[1].id
-
-        users_collection.document(str(message.chat.id)).set({"home": home_id, "current": home_id})
-
-        bot.send_message(message.chat.id, "Create a new folder or Upload a file to start.")
-
-    Timer(60*2, bot.delete_messages, args=(message.chat.id, messages_to_delete)).start()
+        bot.reply_to(message, "Please use /start first.")

@@ -15,4 +15,4 @@ def create_file(message):
 
     question_id = bot.send_message(message.chat.id, "Sure! I'l create a folder. What do you want to name it?").message_id
 
-    user.update({"listening": "filename", "question": question_id})    
+    user.update({"listening": "folder_name", "question": question_id})    
