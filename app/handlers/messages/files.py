@@ -1,4 +1,4 @@
-from app import bot, MAIN_CHANNEL, BACKUP_CHANNELS
+from app import bot, MAIN_CHANNEL, BACKUP_CHANNEL
 
 from firebase_admin import firestore
 
@@ -29,25 +29,22 @@ def upload_files(message):
         file_name = message.document.file_name
                 
         main_message_id = bot.forward_message(MAIN_CHANNEL, message.chat.id, message.message_id).message_id
-        backup_message_ids = []
+        backup_message_id = bot.forward_message(BACKUP_CHANNEL, message.chat.id, message.message_id).message_id
 
-        for BACKUP_CHANNEL in BACKUP_CHANNELS:
-            backup_message_id = bot.forward_message(BACKUP_CHANNEL, message.chat.id, message.message_id).message_id
-
-            backup_message_ids.append(backup_message_id)
+        current_folder_id = user.get("current")
+        current_folder = folders_collection.document(current_folder_id)
 
         file_id = files_collection.add({
             "owner": str(message.chat.id),
+            "previous": current_folder_id,
             "name": file_name,
             "date": datetime.now(),
             "main": main_message_id,
-            "backups": backup_message_ids,
+            "backup": backup_message_id,
             "shared": False
         })[1].id
 
-        current_folder = user.get("current")
-
-        folders_collection.document(current_folder).update({"files": firestore.ArrayUnion([file_id])})
+        current_folder.update({"files": firestore.ArrayUnion([file_id])})
 
         confirm_message_id = bot.reply_to(message, "File saved successfully!").message_id
 
