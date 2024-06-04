@@ -39,6 +39,9 @@ def delete(callback):
         file_doc = files_collection.document(item_id)
         file = file_doc.get()
 
+        if not file.exists:
+            return
+
         previous = file.get("previous")
 
         owner = file.get("owner")
@@ -61,6 +64,9 @@ def delete(callback):
     elif file_or_folder == FOLDER:
         folder_doc = folders_collection.document(item_id)
         folder = file_doc.get()
+
+        if not folder.exists:
+            return
 
         previous = file.get("previous")
 
