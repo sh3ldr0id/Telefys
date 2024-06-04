@@ -1,10 +1,9 @@
 from app import bot, MAIN_CHANNEL, BACKUP_CHANNEL
+from app.helpers.delete import deleteMessages
 
 from firebase_admin import firestore
 
 from datetime import datetime
-
-from threading import Timer
 
 db = firestore.client()
 
@@ -22,7 +21,7 @@ def upload_files(message):
         if message.content_type != "document":
             reply_message_id = bot.reply_to(message, "Please send it as documents to save.").message_id
 
-            Timer(10, bot.delete_messages, args=(message.chat.id, [message.message_id, reply_message_id])).start()
+            deleteMessages(10, message.chat.id, [message.message_id, reply_message_id])
 
             return
 
@@ -48,7 +47,9 @@ def upload_files(message):
 
         confirm_message_id = bot.reply_to(message, "File saved successfully!").message_id
 
-        Timer(5, bot.delete_messages, args=(message.chat.id, [message.message_id, confirm_message_id])).start()
+        deleteMessages(10, message.chat.id, [message.message_id, confirm_message_id])
 
     else:
-        bot.reply_to(message, "Please type /start first!")
+        end_message_id = bot.reply_to(message, "Please type /start first!").message_id
+        
+        deleteMessages(10, message.chat.id, [message.message_id, end_message_id])
