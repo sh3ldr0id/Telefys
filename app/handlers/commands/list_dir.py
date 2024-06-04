@@ -1,13 +1,10 @@
 from app import bot, MAIN_CHANNEL
-from app.helpers.name import fetchName
 from app.helpers.constants import OPEN_FOLDER, DELETE, FILE, FOLDER
+from app.helpers.delete import deleteMessages
 
 from telebot import types
 
 from firebase_admin import firestore
-
-from datetime import datetime
-from threading import Timer
 
 db = firestore.client()
 
@@ -21,6 +18,8 @@ def list_dir(message):
 
     if user.exists:
         messages_to_delete = []
+
+        messages_to_delete.append(message.message_id)
 
         current_folder_id = user.get("current")
         current_folder = folders_collection.document(current_folder_id).get()
@@ -68,7 +67,7 @@ def list_dir(message):
         end_message_id = bot.send_message(message.chat.id, "That's it. :)").message_id
         messages_to_delete.append(end_message_id)
 
-        Timer(60*2, bot.delete_messages, args=(message.chat.id, messages_to_delete)).start()
+        deleteMessages(60*2, message.chat.id, messages_to_delete)
 
     else:
         bot.reply_to(message, "Please use /start first.")

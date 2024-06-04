@@ -1,10 +1,9 @@
-from app import bot, MAIN_CHANNEL, BACKUP_CHANNEL
+from app import bot
+from app.helpers.delete import deleteMessages
 
 from firebase_admin import firestore
 
 from datetime import datetime
-
-from threading import Timer
 
 db = firestore.client()
 
@@ -16,7 +15,7 @@ folders_collection = db.collection("folders")
 def create_folder(message):
     if message.text == "Home":
         end_message_id = bot.reply_to(message, "Please choose a different name.").message_id
-        Timer(10, bot.delete_messages, args=(message.chat.id, [message.message_id, end_message_id])).start()
+        deleteMessages(10, message.chat.id, [message.message_id, end_message_id])
         
         return 
     
@@ -47,4 +46,4 @@ def create_folder(message):
 
         confirm_id = bot.reply_to(message, f"Done! Created '{message.text}' in '{current_folder.get().get('name')}'").message_id
 
-        Timer(10, bot.delete_messages, args=(message.chat.id, [question_id, message.message_id, confirm_id])).start()
+        deleteMessages(10, message.chat.id, [question_id, message.message_id, confirm_id])

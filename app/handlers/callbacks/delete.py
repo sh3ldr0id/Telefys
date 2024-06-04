@@ -1,9 +1,8 @@
 from app import bot, MAIN_CHANNEL, BACKUP_CHANNEL
-from app.helpers.constants import DELETE, FILE, FOLDER
+from app.helpers.constants import FILE, FOLDER
+from app.helpers.delete import deleteMessages
 
 from firebase_admin import firestore
-
-from threading import Timer
 
 db = firestore.client()
 
@@ -13,13 +12,10 @@ folders_collection = db.collection("folders")
 def delete_file(file_doc):
     file = file_doc.get()
 
-    main_message_id = file.get("main")
-    backup_message_id = file.get("backup")
+    name = file.get("name")
+    owner = file.get("owner")
 
     file_doc.delete()
-
-    bot.delete_message(MAIN_CHANNEL, main_message_id)
-    bot.delete_message(BACKUP_CHANNEL, backup_message_id)
 
 def delete_folder(folder_doc):
     folder = folder_doc.get()
@@ -54,11 +50,13 @@ def delete(callback):
             folders_collection.document(previous).update({"files": firestore.ArrayRemove([item_id])}) 
             
             end_message_id = bot.reply_to(callback.message, f"Deleted 📄 {file.get('name')}").message_id
-            Timer(10, bot.delete_messages, args=(callback.message.chat.id, [callback.message.message_id, callback.message.reply_to_message.message_id, end_message_id])).start()
+
+            deleteMessages(10, callback.message.chat.id, [callback.message.message_id, callback.message.reply_to_message.message_id, end_message_id])
 
         else:
             end_message_id = bot.reply_to(callback.message, f"Sorry, You're not authorized to perform actions on this file.").message_id
-            Timer(10, bot.delete_messages, args=(callback.message.chat.id, [callback.message.message_id, end_message_id])).start()
+            
+            deleteMessages(10, callback.message.chat.id, [callback.message.message_id, end_message_id])
 
     elif file_or_folder == FOLDER:
         folder_doc = folders_collection.document(item_id)
@@ -75,8 +73,9 @@ def delete(callback):
             folders_collection.document(previous).update({"folders": firestore.ArrayRemove([item_id])}) 
 
             end_message_id = bot.reply_to(callback.message, f"Deleted 📁 {folder.get('name')}").message_id
-            Timer(10, bot.delete_messages, args=(callback.message.chat.id, [callback.message.message_id, end_message_id])).start()
+            deleteMessages(10, callback.message.chat.id, [callback.message.message_id, end_message_id])
 
         else:
             end_message_id = bot.reply_to(callback.message, f"Sorry, You're not authorized to perform actions on this folder.").message_id
-            Timer(10, bot.delete_messages, args=(callback.message.chat.id, [callback.message.message_id, end_message_id])).start()
+           
+            deleteMessages(10, callback.message.chat.id, [callback.message.message_id, end_message_id])

@@ -1,13 +1,7 @@
-from app import bot, MAIN_CHANNEL
-from app.helpers.name import fetchName
-from app.helpers.constants import OPEN_FOLDER, DELETE, FILE, FOLDER
-
-from telebot import types
+from app import bot
+from app.helpers.delete import deleteMessages
 
 from firebase_admin import firestore
-
-from datetime import datetime
-from threading import Timer
 
 db = firestore.client()
 
@@ -27,7 +21,9 @@ def back(message):
         if current_folder.get('name') == "Home":
             end_message_id = bot.reply_to(message, "You're already at the root folder.").message_id
 
-            Timer(10, bot.delete_messages, args=(message.chat.id, [message.message_id, end_message_id])).start()
+            deleteMessages(10, message.chat.id, [message.message_id, end_message_id])
+
+            return
 
         previous = current_folder.get("previous")
 
@@ -39,4 +35,4 @@ def back(message):
 
         end_message_id = bot.send_message(message.chat.id, f"Currently in '{current_folder.get('name')}'").message_id
 
-        Timer(60*2, bot.delete_message, args=(message.chat.id, end_message_id)).start()
+        deleteMessages(60*2, message.chat.id, end_message_id)

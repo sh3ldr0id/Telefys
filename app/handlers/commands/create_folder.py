@@ -1,7 +1,6 @@
 from app import bot
 
 from firebase_admin import firestore
-from threading import Timer
 
 db = firestore.client()
 
