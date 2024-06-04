@@ -1,5 +1,5 @@
 from app import bot, MAIN_CHANNEL
-from app.helpers.constants import OPEN_FOLDER, DELETE, FILE, FOLDER
+from app.helpers.constants import OPEN_FOLDER, DELETE, PAGE, FILE, FOLDER
 from app.helpers.delete import deleteMessages
 
 from telebot import types
@@ -30,7 +30,15 @@ def list_dir(message):
         files = current_folder.get("files")
         folders = current_folder.get("folders")
 
-        for fileId in files:
+        page = 1
+
+        start_index = (page - 1) * 6
+        end_index = start_index + 6
+
+        page_files = files[start_index:end_index]
+        page_folders = folders[start_index:end_index]
+
+        for fileId in page_files:
             file = files_collection.document(fileId).get()
 
             message_id = file.get("main")
@@ -49,7 +57,7 @@ def list_dir(message):
             file_info_id = bot.reply_to(forwarded_message, f"📄 {file_name} \n📅 {file_date.strftime('%Y-%m-%d %H:%M:%S')}", reply_markup=markup).message_id
             messages_to_delete.append(file_info_id)
 
-        for folderId in folders:
+        for folderId in page_folders:
             folder = folders_collection.document(folderId).get()
 
             folder_name = folder.get("name")
@@ -64,10 +72,28 @@ def list_dir(message):
             folder_message_id = bot.send_message(message.chat.id, f"📁 {folder_name} \n📅 {folder_date.strftime('%Y-%m-%d %H:%M:%S')}", reply_markup=markup).message_id
             messages_to_delete.append(folder_message_id)
 
-        end_message_id = bot.send_message(message.chat.id, "That's it. :)").message_id
-        messages_to_delete.append(end_message_id)
+        if len(folders) > page * 6 or len(files) > page * 6:
+            markup = types.InlineKeyboardMarkup(row_width=1)
 
-        deleteMessages(60*2, message.chat.id, messages_to_delete)
+            events = types.InlineKeyboardButton("Next Page", callback_data=PAGE+str(page+1))
+            markup.add(events)
+
+            total = len(files)/10
+
+            next_page_message_id = bot.send_message(message.chat.id, f"Page {page} out of {total if type(total) == int else total+1}", reply_markup=markup).message_id
+
+            messages_to_delete.append(next_page_message_id)
+
+            deleteMessages(60*2, message.chat.id, messages_to_delete)
+
+        else:
+            end_message_id = bot.send_message(message.chat.id, "That's it. :)").message_id
+
+            messages_to_delete.append(end_message_id)
+
+            deleteMessages(60*2, message.chat.id, messages_to_delete)
 
     else:
-        bot.reply_to(message, "Please use /start first.")
+        end_message_id = bot.reply_to(message, "Please use /start first.").message_id
+
+        deleteMessages(10, message.chat.id, end_message_id)
